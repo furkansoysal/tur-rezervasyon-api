@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tur Rezervasyon API — Demo</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --ink:#1b2430; --muted:#667085; --line:#e4e7ec; --brand:#0e7c86; --bg:#f6f8fa; --warn:#b54708; --ok:#067647; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif; color:var(--ink); background:var(--bg); }
+  header { background:#fff; border-bottom:1px solid var(--line); padding:18px 20px; }
+  header h1 { margin:0; font-size:19px; }
+  header p { margin:2px 0 0; color:var(--muted); font-size:13px; }
+  main { max-width:1000px; margin:0 auto; padding:20px; display:grid; gap:20px; grid-template-columns:1.2fr 1fr; }
+  @media (max-width:800px){ main { grid-template-columns:1fr; } }
+  .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:12px; }
+  .card h3 { margin:0 0 2px; font-size:16px; }
+  .meta { color:var(--muted); font-size:13px; margin-bottom:8px; }
+  .dates { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  button.date { border:1px solid var(--line); background:#fff; border-radius:8px; padding:6px 10px; cursor:pointer; font:inherit; font-size:13px; }
+  button.date:hover:not(:disabled) { border-color:var(--brand); }
+  button.date.sel { background:var(--brand); color:#fff; border-color:var(--brand); }
+  button.date:disabled { color:#aaa; text-decoration:line-through; cursor:not-allowed; }
+  label { display:block; font-size:13px; color:var(--muted); margin:10px 0 3px; }
+  input { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font:inherit; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .err { color:var(--warn); font-size:12px; margin-top:2px; }
+  .primary { margin-top:14px; width:100%; background:var(--brand); color:#fff; border:0; border-radius:8px; padding:10px; font:inherit; font-weight:600; cursor:pointer; }
+  .msg { margin-top:12px; padding:10px 12px; border-radius:8px; font-size:14px; }
+  .msg.ok { background:#ecfdf3; color:var(--ok); } .msg.bad { background:#fff4ed; color:var(--warn); }
+  .note { font-size:12px; color:var(--muted); margin:6px 20px 24px; text-align:center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Tur Rezervasyon API — Demo Arayüzü</h1>
+  <p>Bu sayfa yalnızca API'yi denemek içindir; tüm veriler örnektir.</p>
+</header>
+<main>
+  <section id="tours" aria-label="Turlar"></section>
+  <section>
+    <div class="card">
+      <h3 id="sel-title">Önce bir tur ve tarih seçin</h3>
+      <div class="meta" id="sel-meta"></div>
+      <form id="form" novalidate>
+        <div class="row">
+          <div><label for="adults">Yetişkin</label><input id="adults" type="number" min="1" max="10" value="2"></div>
+          <div><label for="children">Çocuk</label><input id="children" type="number" min="0" max="10" value="0"></div>
+        </div>
+        <label for="name">Ad Soyad</label><input id="name" autocomplete="name">
+        <label for="email">E-posta</label><input id="email" type="email" autocomplete="email">
+        <label for="phone">Telefon</label><input id="phone" type="tel" autocomplete="tel" placeholder="0532 000 00 00">
+        <div class="err" id="errs"></div>
+        <button class="primary" type="submit">Rezervasyon yap</button>
+      </form>
+      <div id="result"></div>
+    </div>
+    <div class="card">
+      <h3>Rezervasyon sorgula / iptal et</h3>
+      <label for="code">Rezervasyon kodu</label><input id="code" placeholder="KT-XXXXXXXX">
+      <div class="row"><button class="primary" id="lookup" type="button">Sorgula</button><button class="primary" id="cancel" type="button" style="background:#b42318">İptal et</button></div>
+      <div id="lookup-result"></div>
+    </div>
+  </section>
+</main>
+<p class="note">Kaynak kodu ve API belgeleri README dosyasında.</p>
+<script>
+const $ = (id) => document.getElementById(id);
+const tl = (n) => n.toLocaleString('tr-TR') + ' TL';
+const dt = (s) => new Date(s + 'T00:00:00').toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+let selected = null;
+
+async function api(method, path, body) {
+  const res = await fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  return { status: res.status, json: await res.json() };
+}
+
+async function loadTours() {
+  const { json } = await api('GET', '/api/tours');
+  $('tours').innerHTML = '';
+  for (const t of json.data) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `<h3></h3><div class="meta"></div><div></div><div class="dates"></div>`;
+    card.querySelector('h3').textContent = t.title;
+    card.querySelector('.meta').textContent = `${t.city} · ${t.duration_days} gün · Yetişkin ${tl(t.adult_price)} / Çocuk ${tl(t.child_price)}`;
+    card.children[2].textContent = t.description;
+    for (const d of t.departures) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'date';
+      b.textContent = d.sold_out ? `${dt(d.date)} (dolu)` : `${dt(d.date)} · ${d.remaining} yer`;
+      b.disabled = d.sold_out;
+      b.onclick = () => {
+        selected = { tour: t.slug, date: d.date, title: t.title };
+        document.querySelectorAll('button.date').forEach((x) => x.classList.remove('sel'));
+        b.classList.add('sel');
+        $('sel-title').textContent = t.title;
+        $('sel-meta').textContent = dt(d.date);
+      };
+      card.querySelector('.dates').appendChild(b);
+    }
+    $('tours').appendChild(card);
+  }
+}
+
+function show(el, cls, text) { el.innerHTML = ''; const d = document.createElement('div'); d.className = 'msg ' + cls; d.textContent = text; el.appendChild(d); }
+function describe(r) { return `${r.code} — ${r.tour.title}, ${dt(r.departure_date)}, ${r.adults} yetişkin + ${r.children} çocuk, ${tl(r.total_price)} (${r.status === 'confirmed' ? 'onaylı' : 'iptal'})`; }
+
+$('form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('errs').textContent = ''; $('result').innerHTML = '';
+  if (!selected) return show($('result'), 'bad', 'Lütfen önce bir tur tarihi seçin.');
+  const { status, json } = await api('POST', '/api/reservations', {
+    tour: selected.tour, date: selected.date,
+    adults: $('adults').value, children: $('children').value,
+    name: $('name').value, email: $('email').value, phone: $('phone').value,
+  });
+  if (status === 201) { show($('result'), 'ok', 'Rezervasyon oluşturuldu: ' + describe(json.data)); $('code').value = json.data.code; loadTours(); }
+  else { $('errs').textContent = json.fields ? Object.entries(json.fields).map(([k, v]) => `${k}: ${v}`).join(' · ') : ''; show($('result'), 'bad', json.error); }
+});
+$('lookup').onclick = async () => {
+  const { status, json } = await api('GET', '/api/reservations/' + encodeURIComponent($('code').value.trim()));
+  status === 200 ? show($('lookup-result'), 'ok', describe(json.data)) : show($('lookup-result'), 'bad', json.error);
+};
+$('cancel').onclick = async () => {
+  const { status, json } = await api('POST', '/api/reservations/' + encodeURIComponent($('code').value.trim()) + '/cancel');
+  status === 200 ? (show($('lookup-result'), 'ok', 'İptal edildi: ' + describe(json.data)), loadTours()) : show($('lookup-result'), 'bad', json.error);
+};
+loadTours();
+</script>
+</body>
+</html>
